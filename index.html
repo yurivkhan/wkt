@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>WKT display</title>
+<style type="text/css">
+html, body, #map { width: 100%; height: 100%; margin: 0px; padding: 0px; }
+#map { z-index: 1; }
+
+#wktControl { position: fixed; left: 0px; right: 0px; top: 0px; z-index: 2; margin: 0px; padding: 0px; }
+#wktControl .buttons { float: right; }
+#wktControl input { width: 100%; }
+#wktControl .entry { overflow: hidden; padding-right: .5em; }
+
+#geomList { position: fixed; left: 0.5em; top: 2em; z-index: 2; background: white; padding: 0.25em; margin: 0px; border: 1px solid #babdb6; font-size: smaller; }
+#geomList li { list-style: none; }
+#geomList li a:link, #geomList li a:visited { color: #204a87; border-bottom: 1px dotted; text-decoration: none; }
+#geomList li a:hover { color: #f57900; }
+#geomList li a.delete:link, #geomList li a.delete:visited { color: #f78787; }
+#geomList li a.delete:hover { color: #cc0000; }
+</style>
+<script type="text/javascript" src="http://maps.api.2gis.ru/1.0"></script>
+<script type="text/javascript">
+DG.autoload(function() {
+
+	var map = new DG.Map('map');
+	map.setCenter(new DG.GeoPoint(82.927810142519,55.028936234826), 15);
+	map.fullscreen.disable();
+	map.geoclicker.disable();
+
+	var normalStyle = new DG.Style.Geometry({
+		strokeColor: '#204a87',
+		strokeWidth: 2,
+		fillColor: '#204a87',
+		fillOpacity: 0.5,
+		pointRadius: 3
+	});
+	var hoverStyle = new DG.Style.Geometry({
+		strokeColor: '#f57900',
+		strokeWidth: 2,
+		fillColor: '#f57900',
+		fillOpacity: 0.5,
+		pointRadius: 3
+	});
+
+	function zoomToGeometry(event)
+	{
+		zoomTo(map.geometries.get(event.target.href.replace(/^.*?#/, '')));
+		event.preventDefault();
+	}
+
+	function hoverGeometry(event)
+	{
+		map.geometries.get(event.target.href.replace(/^.*?#/, '')).setStyle(hoverStyle);
+	}
+
+	function unhoverGeometry(event)
+	{
+		map.geometries.get(event.target.href.replace(/^.*?#/, '')).setStyle(normalStyle);
+	}
+
+	function deleteGeometry(event)
+	{
+		var a = event.target;
+		var li = a.parentNode;
+		map.geometries.remove(a.href.replace(/^.*?#/, ''));
+		li.parentNode.removeChild(li);
+		updateUri();
+		event.preventDefault();
+	}
+
+	function addGeometryFromWkt(wkt)
+	{
+		var geom = DG.WKTParser.getObject(wkt);
+		geom.wkt = wkt;
+		geom.setStyle(normalStyle);
+		map.geometries.add(geom);
+
+		var li = document.createElement('li');
+
+		var a = document.createElement('a');
+		a.textContent = wkt;
+		a.href = '#' + geom.getId();
+		a.onclick = zoomToGeometry;
+		a.onmouseenter = hoverGeometry;
+		a.onmouseleave = unhoverGeometry;
+		li.appendChild(a);
+
+		var deleteButton = document.createElement('a');
+		deleteButton.classList.add('delete');
+		deleteButton.setAttribute('role', 'button');
+		deleteButton.href = '#' + geom.getId();
+		deleteButton.textContent = '×';
+		deleteButton.onclick = deleteGeometry;
+		li.appendChild(deleteButton);
+
+		document.getElementById('geomList').appendChild(li);
+
+		return geom;
+	}
+
+	function zoomTo(geom)
+	{
+		if (geom.getBounds)
+		{
+			map.setBounds(geom.getBounds());
+		}
+		else if (geom.getPosition)
+		{
+			map.setCenter(geom.getPosition(), 13);
+		}
+	}
+
+	function baseUri()
+	{
+		var loc = window.location;
+		return loc.protocol + '//' + loc.host + loc.pathname;
+	}
+
+	var form = document.getElementById('wktControl');
+	var wktInput = document.getElementById('wktInput');
+	var shareButton = document.getElementById('wktShareButton');
+
+	form.onsubmit = function (event)
+	{
+		var wkt = wktInput.value;
+		var geom = addGeometryFromWkt(wkt);
+		zoomTo(geom);
+		updateUri();
+		event.preventDefault();
+	};
+
+	form.onreset = function (event)
+	{
+		map.geometries.removeAll();
+		for (var geomList = document.getElementById('geomList'); geomList.firstChild; geomList.removeChild(geomList.firstChild));
+		window.history.replaceState(null, null, baseUri());
+		event.preventDefault();
+	};
+
+	document.getElementById('wktShortenButton').onclick = function (event)
+	{
+		var requestText = 'http://tiny-url.info/api/v1/create?' +
+			'apikey=45CBA6GA846C0BD9A860&provider=j_mp&' +
+			'format=json&callback=shortened&' +
+			'url=' + encodeURIComponent(window.location);
+		console.log(requestText);
+
+		var script = document.createElement('script');
+		script.type = 'text/javascript';
+		script.src = requestText;
+
+		window.shortened = function (response)
+		{
+			console.log(response);
+			if (response.state === 'ok')
+			{
+				window.prompt('Copy this', response.shorturl);
+			}
+			delete window.shortened;
+		}
+
+		document.head.appendChild(script);
+
+		event.preventDefault();
+	}
+
+	function updateUri()
+	{
+		var link = baseUri();
+		var all = map.geometries.getAll();
+		switch (all.length)
+		{
+		case 0:
+			break;
+		default:
+			link += '?' + all.map(function(geom) { return encodeURIComponent(geom.wkt); }).join(';');
+			break;
+		}
+		window.history.replaceState(null, null, link);
+	};
+
+	var query = window.location.search.replace(/^\?/, '');
+
+	if (query)
+	{
+		query.split(';').map(decodeURIComponent).forEach(addGeometryFromWkt);
+		zoomTo(map.geometries);
+	}
+
+});
+</script>
+</head>
+<body>
+  <form id="wktControl">
+    <div class="buttons">
+      <button type="submit" id="wktAddButton">Add</button
+      ><button type="reset" id="wktClearButton">Clear</button
+      ><button id="wktShortenButton">Share</button>
+    </div>
+    <div class="entry">
+      <input id="wktInput" placeholder="Enter some WKT in global coordinates">
+    </div>
+  </form>
+  <ul id="geomList"></ul>
+  <div id="map"></div>
+</body>
+</html>
