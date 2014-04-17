@@ -123,11 +123,18 @@ DG.autoload(function() {
 
 	form.onsubmit = function (event)
 	{
-		var wkt = wktInput.value;
-		var geom = addGeometryFromWkt(wkt);
-		zoomTo(geom);
-		updateUri();
-		event.preventDefault();
+		try
+		{
+			var wkt = wktInput.value;
+			var geom = addGeometryFromWkt(wkt);
+			zoomTo(geom);
+			updateUri();
+			wktInput.value = '';
+		}
+		finally
+		{
+			event.preventDefault();
+		}
 	};
 
 	form.onreset = function (event)
