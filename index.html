@@ -11,7 +11,8 @@ html, body, #map { width: 100%; height: 100%; margin: 0px; padding: 0px; }
 #wktControl input { width: 100%; }
 #wktControl .entry { overflow: hidden; padding-right: .5em; }
 
-#geomList { position: fixed; left: 0.5em; top: 2em; z-index: 2; background: white; padding: 0.25em; margin: 0px; border: 1px solid #babdb6; font-size: smaller; }
+#geomList { position: fixed; z-index: 2; left: 0.5em; top: 2em; max-width: calc(25% - 1em); max-height: calc(100% - 3em); overflow-y: auto;
+	background: white; color: black; padding: 0.25em; margin: 0px; border: 1px solid #babdb6; font-size: smaller; }
 #geomList li { list-style: none; }
 #geomList li a:link, #geomList li a:visited { color: #204a87; border-bottom: 1px dotted; text-decoration: none; }
 #geomList li a:hover { color: #f57900; }
