@@ -19,51 +19,66 @@ html, body, #map { width: 100%; height: 100%; margin: 0px; padding: 0px; }
 #geomList li a.delete:link, #geomList li a.delete:visited { color: #f78787; }
 #geomList li a.delete:hover { color: #cc0000; }
 </style>
-<script type="text/javascript" src="http://maps.api.2gis.ru/1.0"></script>
+<script src="http://maps.api.2gis.ru/2.0/loader.js?pkg=full" data-id="dgLoader"></script>
 <script type="text/javascript">
-DG.autoload(function() {
+'use strict';
+DG.then(function() {
 
-	var map = new DG.Map('map');
-	map.setCenter(new DG.GeoPoint(82.927810142519,55.028936234826), 15);
-	map.fullscreen.disable();
-	map.geoclicker.disable();
+	var form = document.getElementById('wktControl');
+	var wktInput = document.getElementById('wktInput');
+	var shareButton = document.getElementById('wktShareButton');
+	var sidebar = document.getElementById('geomList');
 
-	var normalStyle = new DG.Style.Geometry({
-		strokeColor: '#204a87',
-		strokeWidth: 2,
+	var map = new DG.Map('map', {
+		center: DG.latLng(55.028936234826, 82.927810142519),
+		zoom: 17,
+		zoomControl: false,
+		fullscreenControl: false
+	});
+	var layerGroup = L.layerGroup();
+	layerGroup.addTo(map);
+
+	var normalStyle = {
+		color: '#204a87',
+		weight: 2,
+		opacity: 1,
 		fillColor: '#204a87',
-		fillOpacity: 0.5,
-		pointRadius: 3
-	});
-	var hoverStyle = new DG.Style.Geometry({
-		strokeColor: '#f57900',
-		strokeWidth: 2,
+		fillOpacity: 0.5
+	};
+	var hoverStyle = {
+		color: '#f57900',
+		weight: 2,
+		opacity: 1,
 		fillColor: '#f57900',
-		fillOpacity: 0.5,
-		pointRadius: 3
-	});
+		fillOpacity: 0.5
+	}
 
-	function zoomToGeometry(event)
+	function setStyle(geom, style)
 	{
-		zoomTo(map.geometries.get(event.target.href.replace(/^.*?#/, '')));
+		if (geom.setStyle) geom.setStyle(style);
+	}
+
+	function zoomToGeometry(event) // fires on li/a[1]
+	{
+		zoomTo(event.target.parentNode.geom);
 		event.preventDefault();
 	}
 
-	function hoverGeometry(event)
+	function hoverGeometry(event) // fires on li/a[1]
 	{
-		map.geometries.get(event.target.href.replace(/^.*?#/, '')).setStyle(hoverStyle);
+		setStyle(event.target.parentNode.geom, hoverStyle);
 	}
 
-	function unhoverGeometry(event)
+	function unhoverGeometry(event) // fires on li/a[1]
 	{
-		map.geometries.get(event.target.href.replace(/^.*?#/, '')).setStyle(normalStyle);
+		setStyle(event.target.parentNode.geom, normalStyle);
 	}
 
-	function deleteGeometry(event)
+	function deleteGeometry(event) // fires on li/a[2]
 	{
 		var a = event.target;
 		var li = a.parentNode;
-		map.geometries.remove(a.href.replace(/^.*?#/, ''));
+		layerGroup.removeLayer(li.geom);
 		li.parentNode.removeChild(li);
 		updateUri();
 		event.preventDefault();
@@ -71,16 +86,18 @@ DG.autoload(function() {
 
 	function addGeometryFromWkt(wkt)
 	{
-		var geom = DG.WKTParser.getObject(wkt);
+		var geom = DG.Wkt.geoJsonLayer(wkt);
 		geom.wkt = wkt;
-		geom.setStyle(normalStyle);
-		map.geometries.add(geom);
+		setStyle(geom, normalStyle);
+
+		layerGroup.addLayer(geom);
 
 		var li = document.createElement('li');
+		li.geom = geom;
 
 		var a = document.createElement('a');
 		a.textContent = wkt;
-		a.href = '#' + geom.getId();
+		a.href = '#';
 		a.onclick = zoomToGeometry;
 		a.onmouseenter = hoverGeometry;
 		a.onmouseleave = unhoverGeometry;
@@ -89,26 +106,40 @@ DG.autoload(function() {
 		var deleteButton = document.createElement('a');
 		deleteButton.classList.add('delete');
 		deleteButton.setAttribute('role', 'button');
-		deleteButton.href = '#' + geom.getId();
+		deleteButton.href = '#';
 		deleteButton.textContent = '×';
 		deleteButton.onclick = deleteGeometry;
 		li.appendChild(deleteButton);
 
-		document.getElementById('geomList').appendChild(li);
+		sidebar.appendChild(li);
 
 		return geom;
 	}
 
+	function bounds(geom)
+	{
+		if (geom instanceof Array)
+		{
+			return geom.map(bounds).reduce(function (lhs, rhs) { return lhs.extend(rhs); });
+		}
+		else if (geom.getBounds)
+		{
+			return geom.getBounds();
+		}
+		else if (geom.getLatLng)
+		{
+			return L.latLngBounds([geom.getLatLng()]);
+		}
+	}
+
 	function zoomTo(geom)
 	{
-		if (geom.getBounds)
-		{
-			map.setBounds(geom.getBounds());
-		}
-		else if (geom.getPosition)
-		{
-			map.setCenter(geom.getPosition(), 13);
-		}
+		map.fitBounds(bounds(geom), {
+			paddingTopLeft: [
+				sidebar.offsetLeft + sidebar.offsetWidth,
+				wktInput.offsetTop + wktInput.offsetHeight
+			]
+		});
 	}
 
 	function baseUri()
@@ -116,10 +147,6 @@ DG.autoload(function() {
 		var loc = window.location;
 		return loc.protocol + '//' + loc.host + loc.pathname;
 	}
-
-	var form = document.getElementById('wktControl');
-	var wktInput = document.getElementById('wktInput');
-	var shareButton = document.getElementById('wktShareButton');
 
 	form.onsubmit = function (event)
 	{
@@ -139,7 +166,7 @@ DG.autoload(function() {
 
 	form.onreset = function (event)
 	{
-		map.geometries.removeAll();
+		layerGroup.clearLayers();
 		for (var geomList = document.getElementById('geomList'); geomList.firstChild; geomList.removeChild(geomList.firstChild));
 		window.history.replaceState(null, null, baseUri());
 		event.preventDefault();
@@ -151,7 +178,6 @@ DG.autoload(function() {
 			'apikey=45CBA6GA846C0BD9A860&provider=j_mp&' +
 			'format=json&callback=shortened&' +
 			'url=' + encodeURIComponent(window.location);
-		console.log(requestText);
 
 		var script = document.createElement('script');
 		script.type = 'text/javascript';
@@ -159,7 +185,6 @@ DG.autoload(function() {
 
 		window.shortened = function (response)
 		{
-			console.log(response);
 			if (response.state === 'ok')
 			{
 				window.prompt('Copy this', response.shorturl);
@@ -175,14 +200,10 @@ DG.autoload(function() {
 	function updateUri()
 	{
 		var link = baseUri();
-		var all = map.geometries.getAll();
-		switch (all.length)
+		var all = layerGroup.getLayers();
+		if (all.length)
 		{
-		case 0:
-			break;
-		default:
 			link += '?' + all.map(function(geom) { return encodeURIComponent(geom.wkt); }).join(';');
-			break;
 		}
 		window.history.replaceState(null, null, link);
 	};
@@ -192,7 +213,7 @@ DG.autoload(function() {
 	if (query)
 	{
 		query.split(';').map(decodeURIComponent).forEach(addGeometryFromWkt);
-		zoomTo(map.geometries);
+		zoomTo(layerGroup.getLayers());
 	}
 
 });
